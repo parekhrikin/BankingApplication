@@ -3,9 +3,11 @@ package com.learning.bankingapplication.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.learning.bankingapplication.ExceptionHandler.CustomerNotFoundException;
 import com.learning.bankingapplication.dto.AuthRequest;
+import com.learning.bankingapplication.dto.CustomerDTO;
 import com.learning.bankingapplication.entity.Account;
 import com.learning.bankingapplication.entity.Beneficiary;
 import com.learning.bankingapplication.entity.Customer;
+import com.learning.bankingapplication.entity.Transaction;
 import com.learning.bankingapplication.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,6 +20,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -38,6 +41,9 @@ public class CustomerController {
 
     @Autowired
     BeneficiaryService beneficiaryService;
+
+    @Autowired
+    TransactionService transactionService;
 
     @Autowired
     private JwtService jwtService;
@@ -250,13 +256,27 @@ public class CustomerController {
     @PutMapping("/transfer")
     @PreAuthorize("hasAuthority('ROLE_CUST')")
     public ResponseEntity transferMoney(@RequestBody JsonNode payload) {
-        if(!customerService.findById(payload.get("fromAccNumber").asInt()).isPresent()){
+        int sender = payload.get("fromAccNumber").asInt();
+        int recipient = payload.get("toAccNumber").asInt();
+        int amount = payload.get("amount").asInt();
+
+        if(!accountService.findById(sender).isPresent()){
             return new ResponseEntity<>("Sending Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
-        } else if(!customerService.findById(payload.get("toAccNumber").asInt()).isPresent()){
+        } else if(!accountService.findById(recipient).isPresent()){
             return new ResponseEntity<>("Recipient Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
         }
 
-        return null;
+        Transaction t = new Transaction();
+        t.setSender(sender);
+        t.setRecipient(recipient);
+        t.setAmount(amount);
+        t.setDateTime(LocalDateTime.now());
+        t.setTransactionType(Transaction.TransactionType.CR);
+        t.setCreatedBy(payload.get("by").get("customerId").asInt());
+
+        transactionService.transfer(t);
+
+        return ResponseEntity.ok("Transaction completed.");
 
     }
 }

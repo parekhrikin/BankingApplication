@@ -3,13 +3,14 @@ package com.learning.bankingapplication.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeCreator;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.util.JSONPObject;
 import com.learning.bankingapplication.ExceptionHandler.StaffNotFoundException;
 import com.learning.bankingapplication.dto.AuthRequest;
 import com.learning.bankingapplication.dto.CustomerDTO;
-import com.learning.bankingapplication.entity.Account;
-import com.learning.bankingapplication.entity.Beneficiary;
-import com.learning.bankingapplication.entity.Customer;
-import com.learning.bankingapplication.entity.Staff;
+import com.learning.bankingapplication.entity.*;
 import com.learning.bankingapplication.service.*;
 import org.apache.coyote.Response;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +25,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Optional;
@@ -42,6 +45,9 @@ public class StaffController {
 
     @Autowired
     AccountService accountService;
+
+    @Autowired
+    TransactionService transactionService;
 
     @Autowired
     BeneficiaryService beneficiaryService;
@@ -206,6 +212,75 @@ public class StaffController {
         }
 
         return ResponseEntity.ok(beneficiaryService.update(ben));
+    }
+
+    @PutMapping("/transfer")
+    @PreAuthorize("hasAuthority('ROLE_STAFF')")
+    public ResponseEntity transferMoney(@RequestBody JsonNode payload) {
+        int sender = payload.get("fromAccNumber").asInt();
+        int recipient = payload.get("toAccNumber").asInt();
+        int amount = payload.get("amount").asInt();
+
+        if(!accountService.findById(sender).isPresent()){
+            return new ResponseEntity<>("Sending Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
+        } else if(!accountService.findById(recipient).isPresent()){
+            return new ResponseEntity<>("Recipient Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
+        }
+
+        Transaction t = new Transaction();
+        t.setSender(sender);
+        t.setRecipient(recipient);
+        t.setAmount(amount);
+        t.setDateTime(LocalDateTime.now());
+        t.setTransactionType(Transaction.TransactionType.CR);
+        t.setCreatedBy(payload.get("by").get("customerId").asInt());
+
+        transactionService.transfer(t);
+
+        return ResponseEntity.ok("Transaction completed.");
+
+    }
+
+
+    @GetMapping("/account/{accNo}")
+    @PreAuthorize("hasAuthority('ROLE_STAFF')")
+    public ResponseEntity fetchStatement(@PathVariable int accNo) {
+        if(!accountService.findById(accNo).isPresent()){
+            return new ResponseEntity<>("Sending Account ID doesn't exist.", HttpStatus.FORBIDDEN);
+        }
+
+        Optional<Account> account = accountService.findById(accNo);
+        Optional<Customer> customer = customerService.findById(account.get().getCustomerId());
+        List<Transaction> transactions = transactionService.findAll();
+
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        ArrayNode res = objectMapper.createArrayNode();
+        for(Transaction t: transactions){
+            if(t.getSender() == accNo || t.getRecipient() == accNo){
+                ObjectNode transObj = objectMapper.createObjectNode();
+                transObj.put("id", t.getId());
+                transObj.put("amount", t.getAmount());
+                transObj.put("sender", t.getSender());
+                transObj.put("recipient", t.getRecipient());
+                transObj.put("createdDate", t.getDateTime().toString());
+                transObj.put("transactionType", t.getTransactionType().toString());
+                transObj.put("createdBy", t.getCreatedBy());
+                res.add(transObj);
+            }
+        }
+
+
+        ObjectNode obj = objectMapper.createObjectNode();
+
+        obj.put("accountNo", accNo);
+        obj.put("customerName", customer.get().getFullname());
+        obj.put("balance", account.get().getAccountBalance());
+        obj.put("transactions", res);
+
+        JsonNode jsonNode = (JsonNode) obj;
+
+        return ResponseEntity.ok(jsonNode);
     }
 
 

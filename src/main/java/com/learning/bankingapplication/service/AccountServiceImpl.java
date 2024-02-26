@@ -49,4 +49,25 @@ public class AccountServiceImpl implements AccountService {
         return Optional.empty();
     }
 
+    @Override
+    public boolean checkAccountBalance(Integer accNo, Integer amount){
+        Optional<Account> acc = findById(accNo);
+        return acc.get().getAccountBalance() > amount ? true : false;
+    }
+
+    @Override
+    public void deductAmount(Integer accNo, Integer amount) {
+        Optional<Account> acc = findById(accNo);
+        acc.get().setAccountBalance(acc.get().getAccountBalance() - amount);
+        accountRepository.save(acc.get());
+    }
+
+    @Override
+    public void addAmount(Integer accNo, Integer amount) {
+        Optional<Account> acc = findById(accNo);
+        acc.get().setAccountBalance(acc.get().getAccountBalance() + amount);
+        accountRepository.save(acc.get());
+    }
+
+
 }

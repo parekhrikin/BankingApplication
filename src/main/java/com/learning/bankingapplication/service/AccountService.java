@@ -16,4 +16,7 @@ public interface AccountService {
     public Account update(Optional<Account> a);
 
     public Optional<Account> delete(Integer accountNo);
+    public boolean checkAccountBalance(Integer accNo, Integer amount);
+    public void deductAmount(Integer accNo, Integer amount);
+    public void addAmount(Integer accNo, Integer amount);
 }
