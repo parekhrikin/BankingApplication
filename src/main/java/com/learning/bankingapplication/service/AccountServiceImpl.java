@@ -23,6 +23,7 @@ public class AccountServiceImpl implements AccountService {
     public Account createAccount(Account acc, int customerId) {
         acc.setDateOfCreation(LocalDateTime.now());
         acc.setCustomerId(customerId);
+        acc.setApproved("Yes");
         acc.setBeneficiary("Yes");
         return accountRepository.save(acc);
     }

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeCreator;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.util.JSONPObject;
+import com.learning.bankingapplication.ExceptionHandler.CustomerNotFoundException;
 import com.learning.bankingapplication.ExceptionHandler.StaffNotFoundException;
 import com.learning.bankingapplication.dto.AuthRequest;
 import com.learning.bankingapplication.dto.CustomerDTO;
@@ -86,6 +87,12 @@ public class StaffController {
         }
     }
 
+    @GetMapping("/username/{username}")
+    @PreAuthorize("hasAuthority('ROLE_STAFF')")
+    public ResponseEntity<Optional<Staff>> getStaffByUsername(@PathVariable String username) throws StaffNotFoundException {
+        return ResponseEntity.ok(staffService.findByUsername(username));
+    }
+
     @GetMapping("/customer")
     @PreAuthorize("hasAuthority('ROLE_STAFF')")
     public ResponseEntity fetchAllCustomers() throws JsonProcessingException {
@@ -162,11 +169,11 @@ public class StaffController {
     @PutMapping("/accounts/approve")
     @PreAuthorize("hasAuthority('ROLE_STAFF')")
     public ResponseEntity approveCustomerAccounts(@RequestBody JsonNode body){
-        if(!accountService.findById(body.get("accNo").asInt()).isPresent()){
-            return new ResponseEntity<>("Account Number "+ body.get("accNo").asInt() +" doesn't exist.", HttpStatus.FORBIDDEN);
+        if(!accountService.findById(body.get("accountNumber").asInt()).isPresent()){
+            return new ResponseEntity<>("Account Number "+ body.get("accountNumber").asInt() +" doesn't exist.", HttpStatus.FORBIDDEN);
         }
 
-        Optional<Account> account = accountService.findById(body.get("accNo").asInt());
+        Optional<Account> account = accountService.findById(body.get("accountNumber").asInt());
 
         if(account.get().getApproved().equals("No")){
             account.get().setApproved(body.get("approved").asText());

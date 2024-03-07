@@ -10,6 +10,7 @@ import com.learning.bankingapplication.entity.Customer;
 import com.learning.bankingapplication.entity.Transaction;
 import com.learning.bankingapplication.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,13 +22,14 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@CrossOrigin(origins = "http://localhost:3000")
 @RestController
 @RequestMapping("/api/customer")
-@CrossOrigin(origins = "http://localhost:3000")
 public class CustomerController {
 
     @Autowired
@@ -83,6 +85,12 @@ public class CustomerController {
         return ResponseEntity.ok(customerService.findById(id));
     }
 
+    @GetMapping("/username/{username}")
+    @PreAuthorize("hasAuthority('ROLE_CUST')")
+    public ResponseEntity<Optional<Customer>> getCustomerByUsername(@PathVariable String username) throws CustomerNotFoundException {
+        return ResponseEntity.ok(customerService.findByUsername(username));
+    }
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_CUST')")
     public ResponseEntity updateCustomerById(@PathVariable int id, @RequestBody JsonNode customer) throws CustomerNotFoundException {
@@ -129,11 +137,15 @@ public class CustomerController {
 
     @PostMapping("/{id}/account")
     @PreAuthorize("hasAuthority('ROLE_CUST')")
-    public ResponseEntity createAccount(@PathVariable int id, @RequestBody Account account) {
+    public ResponseEntity createAccount(@PathVariable int id, @RequestBody JsonNode body) {
 
         if(!customerService.findById(id).isPresent()){
             return new ResponseEntity<>("Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
         }
+
+        Account account = new Account();
+        account.setAccountBalance(body.get("accountBalance").asInt());
+        account.setAccountType(Account.AccountType.valueOf(body.get("accountType").asText()));
 
         return ResponseEntity.ok(accountService.createAccount(account, id));
     }
@@ -145,12 +157,23 @@ public class CustomerController {
             return new ResponseEntity<>("Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
         }
 
-        return ResponseEntity.ok(accountService.findAll());
+        List<Account> allAccounts = accountService.findAll();
+        List<Account> accounts = new ArrayList<>();
+
+        for(Account acc: allAccounts){
+            if(id == acc.getCustomerId()){
+                accounts.add(acc);
+            }
+        }
+
+        return ResponseEntity.ok(accounts);
     }
+
+
 
     @PutMapping("/{id}/account/{accountNo}")
     @PreAuthorize("hasAuthority('ROLE_CUST')")
-    public ResponseEntity approveAccount(@PathVariable int id, @PathVariable int accountNo, @RequestBody JsonNode body) {
+    public ResponseEntity approveAccount(@PathVariable int id, @PathVariable int accountNo, @RequestBody Account newAccount) {
         if(!customerService.findById(id).isPresent()){
             return new ResponseEntity<>("Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
         }
@@ -161,10 +184,12 @@ public class CustomerController {
             return new ResponseEntity<>("Account Not Found", HttpStatus.FORBIDDEN);
         }
 
-        account.get().setApproved(String.valueOf(body.get("approved")));
+        account.get().setApproved(String.valueOf(newAccount.getApproved()));
 
         return ResponseEntity.ok(accountService.update(account));
     }
+
+
 
     @GetMapping("/{id}/account/{accountNo}")
     @PreAuthorize("hasAuthority('ROLE_CUST')")
@@ -182,6 +207,23 @@ public class CustomerController {
         return ResponseEntity.ok(account);
     }
 
+    @GetMapping("/{custId}/beneficiary/all")
+    @PreAuthorize("hasAuthority('ROLE_CUST')")
+    public ResponseEntity getAllBeneficiaries(@PathVariable int custId){
+        if(!customerService.findById(custId).isPresent()){
+            return new ResponseEntity<>("Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
+        }
+
+        List<Beneficiary> allBens = beneficiaryService.findAll();
+        List<Beneficiary> bens = new ArrayList<>();
+
+        allBens.stream()
+                .filter(ben -> ben.getCustomerId() == custId)
+                .forEach(bens::add);
+
+        return ResponseEntity.ok(bens);
+    }
+
     @PostMapping("/{custId}/beneficiary")
     @PreAuthorize("hasAuthority('ROLE_CUST')")
     public ResponseEntity addBeneficiary(@PathVariable int custId, @RequestBody JsonNode body) {
@@ -189,10 +231,10 @@ public class CustomerController {
             return new ResponseEntity<>("Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
         }
 
-        Optional<Account> account = accountService.findById(body.get("beneficiaryNo").asInt());
+        Optional<Account> account = accountService.findById(body.get("accountNumber").asInt());
 
         if(account.isEmpty()){
-            return new ResponseEntity<>("Account with ID " + accountService.findById(body.get("beneficiaryNo").asInt()) + "Not Found", HttpStatus.FORBIDDEN);
+            return new ResponseEntity<>("Account with ID " + accountService.findById(body.get("accountNumber").asInt()) + "Not Found", HttpStatus.FORBIDDEN);
         }
 
         //Since default approved status is Yes
@@ -201,10 +243,10 @@ public class CustomerController {
 //        }
 
         Beneficiary beneficiary = new Beneficiary();
-        beneficiary.setAccountNumber(body.get("beneficiaryNo").asInt());
+        beneficiary.setAccountNumber(body.get("accountNumber").asInt());
         beneficiary.setCustomerId(custId);
-        beneficiary.setAccountType(Account.AccountType.valueOf(body.get("beneficiaryType").asText()));
-        beneficiary.setApproved(body.get("approved").asText());
+        beneficiary.setAccountType(Account.AccountType.valueOf(body.get("accountType").asText()));
+        beneficiary.setApproved("Yes");
 
         return ResponseEntity.ok(beneficiaryService.createBeneficiary(beneficiary, account.get().getAccountNumber()));
     }
@@ -272,11 +314,26 @@ public class CustomerController {
         t.setAmount(amount);
         t.setDateTime(LocalDateTime.now());
         t.setTransactionType(Transaction.TransactionType.CR);
-        t.setCreatedBy(payload.get("by").get("customerId").asInt());
+        t.setCreatedBy(payload.get("customerId").asInt());
 
         transactionService.transfer(t);
 
         return ResponseEntity.ok("Transaction completed.");
 
+    }
+
+    @GetMapping("/{accountNumber}/viewStatement")
+    @PreAuthorize("hasAuthority('ROLE_CUST')")
+    public ResponseEntity viewStatement(@PathVariable int accountNumber){
+        if(!accountService.findById(accountNumber).isPresent()){
+            return new ResponseEntity<>("Sending Customer ID doesn't exist.", HttpStatus.FORBIDDEN);
+        }
+
+        List<Transaction> allTransactions = transactionService.findAll();
+        List<Transaction> myTransactions = new ArrayList<>();
+        allTransactions.stream()
+                .filter(t -> t.getSender() == accountNumber || t.getRecipient() == accountNumber)
+                .forEach(myTransactions::add);
+        return ResponseEntity.ok(myTransactions);
     }
 }
